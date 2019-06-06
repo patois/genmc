@@ -6,6 +6,8 @@
 # - https://github.com/RolfRolles/HexRaysDeob
 # - https://github.com/NeatMonster/MCExplorer
 
+__author__ = "Dennis Elser"
+
 import os
 
 import ida_idaapi
@@ -16,10 +18,8 @@ import ida_hexrays
 import ida_funcs
 import ida_diskio
 import ida_ida
-
-
-__author__ = "Dennis Elser"
-
+import shutil
+import errno
 
 LEVELS = [
 ["MMAT_GENERATED",ida_hexrays.MMAT_GENERATED],
@@ -31,13 +31,42 @@ LEVELS = [
 ["MMAT_GLBOPT3",ida_hexrays.MMAT_GLBOPT3],
 ["MMAT_LVARS",ida_hexrays.MMAT_LVARS]]
 
+# workaround for a bug in IDAPython for IDA 7.3 beta
 try:
     VIEWERS
 except:
     VIEWERS = []
 
+SELF = __file__
+
+# -----------------------------------------------------------------------------
+def install_plugin():
+    """Installs script to IDA userdir as a plugin"""
+    src = SELF
+    base = os.path.join(
+        ida_diskio.get_user_idadir(),
+        "plugins")
+    dst = os.path.join(base, genmc.wanted_name+".py")
+    ida_kernwin.msg("Copying script from \"%s\" to \"%s\"..." % (src, dst))
+    if not os.path.exists(base):
+        try:
+            os.path.makedirs(base)
+        except OSError as e:
+            if e.errno != errno.EEXIST:
+                ida_kernwin.msg("failed (mkdir)!\n")
+                return False
+    try:
+        shutil.copy(src, dst)
+    except:
+        ida_kernwin.msg("failed (copy)!\n")
+        return False
+    ida_kernwin.msg("done!\n")
+    return True
+
+
 # -----------------------------------------------------------------------------
 def is_ida_version(requested):
+    """Checks minimum required IDA version."""
     rv = requested.split(".")
     kv = ida_kernwin.get_kernel_version().split(".")
 
@@ -52,11 +81,14 @@ def is_ida_version(requested):
 
 # -----------------------------------------------------------------------------
 def is_compatible():
+    """Checks whether script is compatible with current IDA and
+    decompiler versions."""
     min_ida_ver = "7.3"
     return is_ida_version(min_ida_ver) and ida_hexrays.init_hexrays_plugin()
 
 # -----------------------------------------------------------------------------
 class printer_t(ida_hexrays.vd_printer_t):
+    """Converts microcode output to an array of strings."""
     def __init__(self, *args):
         ida_hexrays.vd_printer_t.__init__(self)
         self.mc = []
@@ -70,6 +102,7 @@ class printer_t(ida_hexrays.vd_printer_t):
 
 # -----------------------------------------------------------------------------
 class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
+    """Creates a widget that displays Hex-Rays microcode."""
     def Create(self, title, lines = []):
         title = "View Microcode - %s" % title
         if not ida_kernwin.simplecustviewer_t.Create(self, title):
@@ -81,6 +114,8 @@ class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
 
 # -----------------------------------------------------------------------------
 def ask_desired_maturity():
+    """Displays a dropdown list control which lets the user
+    choose a maturity level of the microcode to generate."""
     class MaturityForm(ida_kernwin.Form):
         def __init__(self):
             ctrl = ida_kernwin.Form.DropdownListControl([text for text, _ in LEVELS])
@@ -100,6 +135,9 @@ def ask_desired_maturity():
 
 # -----------------------------------------------------------------------------
 def show_microcode():
+    """Generates and displays microcode for an address range.
+    An address range can be a selection of code or that of
+    the current function."""
     global VIEWERS
 
     sel, sea, eea = ida_kernwin.read_range_selection(None)
@@ -141,6 +179,10 @@ def show_microcode():
 
 # -----------------------------------------------------------------------------
 def create_mc_widget():
+    """Checks minimum requirements for the script/plugin to be able to run.
+    Displays microcode or in case of failure, displays error message.
+    This function acts as the main entry point that is invoked if the
+    code is run as a script or as a plugin."""
     if not is_compatible():
         ida_kernwin.msg("%s: Unsupported IDA / Hex-rays version\n" % (genmc.wanted_name))
         return False
@@ -151,11 +193,13 @@ def create_mc_widget():
 
 # -----------------------------------------------------------------------------
 class genmc(ida_idaapi.plugin_t):
+    """Class that is required for the code to be recognized as
+    a plugin by IDA."""
     flags = 0
     comment = "Display microcode"
     help = comment
     wanted_name = 'genmc'
-    wanted_hotkey = 'Ctrl-Shift--'
+    wanted_hotkey = 'Ctrl-Shift-M'
 
     def init(self):
         return (ida_idaapi.PLUGIN_OK if
@@ -168,19 +212,17 @@ class genmc(ida_idaapi.plugin_t):
         pass
 
 # -----------------------------------------------------------------------------
-def PLUGIN_ENTRY():   
+def PLUGIN_ENTRY():
+    """Entry point of this code if run as a plugin."""
     return genmc()
 
 # -----------------------------------------------------------------------------
 def SCRIPT_ENTRY():
+    """Entry point of this code if run as a script."""
     if "__plugins__" not in __name__:
-        """
-        ida_plugins_dir = ida_diskio.idadir("plugins")
-        usr_plugins_dir = os.path.join(ida_diskio.get_user_idadir(), "plugins")
-        ida_kernwin.msg("This script may also be installed as a plugin to\n 1.) %s\n 2.) %s\n" % (
-            ida_plugins_dir,
-            usr_plugins_dir))
-        """
+        ida_kernwin.msg(("%s: Available commands:\n"
+            "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
+            genmc.wanted_name))
         create_mc_widget()
     return
 
