@@ -8,6 +8,7 @@
 
 __author__ = "Dennis Elser"
 
+# -----------------------------------------------------------------------------
 import os
 
 import ida_idaapi
@@ -21,32 +22,29 @@ import ida_ida
 import shutil
 import errno
 
-LEVELS = [
-["MMAT_GENERATED",ida_hexrays.MMAT_GENERATED],
-["MMAT_PREOPTIMIZED",ida_hexrays.MMAT_PREOPTIMIZED],
-["MMAT_LOCOPT",ida_hexrays.MMAT_LOCOPT],
-["MMAT_CALLS",ida_hexrays.MMAT_CALLS],
-["MMAT_GLBOPT1",ida_hexrays.MMAT_GLBOPT1],
-["MMAT_GLBOPT2",ida_hexrays.MMAT_GLBOPT2],
-["MMAT_GLBOPT3",ida_hexrays.MMAT_GLBOPT3],
-["MMAT_LVARS",ida_hexrays.MMAT_LVARS]]
-
-# workaround for a bug in IDAPython for IDA 7.3 beta
-try:
-    VIEWERS
-except:
-    VIEWERS = []
-
-SELF = __file__
+# -----------------------------------------------------------------------------
+def is_plugin():
+    """returns True if this script is executed from within an IDA plugins
+    directory, False otherwise."""
+    return "__plugins__" in __name__
 
 # -----------------------------------------------------------------------------
+SELF = __file__
 def install_plugin():
     """Installs script to IDA userdir as a plugin"""
+    if is_plugin():
+        ida_kernwin.msg("Command not available. Plugin already installed.\n")
+        return False
+
     src = SELF
     base = os.path.join(
         ida_diskio.get_user_idadir(),
         "plugins")
     dst = os.path.join(base, genmc.wanted_name+".py")
+    if os.path.isfile(dst):
+        btnid = ida_kernwin.ask_yn(ida_kernwin.ASKBTN_NO, "File exists. Replace?")
+        if btnid is not ida_kernwin.ASKBTN_YES:
+            return False
     ida_kernwin.msg("Copying script from \"%s\" to \"%s\"..." % (src, dst))
     if not os.path.exists(base):
         try:
@@ -62,7 +60,6 @@ def install_plugin():
         return False
     ida_kernwin.msg("done!\n")
     return True
-
 
 # -----------------------------------------------------------------------------
 def is_ida_version(requested):
@@ -116,12 +113,32 @@ class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
 def ask_desired_maturity():
     """Displays a dropdown list control which lets the user
     choose a maturity level of the microcode to generate."""
+
+    maturity_levels = [
+    ["MMAT_GENERATED", ida_hexrays.MMAT_GENERATED],
+    ["MMAT_PREOPTIMIZED", ida_hexrays.MMAT_PREOPTIMIZED],
+    ["MMAT_LOCOPT", ida_hexrays.MMAT_LOCOPT],
+    ["MMAT_CALLS", ida_hexrays.MMAT_CALLS],
+    ["MMAT_GLBOPT1", ida_hexrays.MMAT_GLBOPT1],
+    ["MMAT_GLBOPT2", ida_hexrays.MMAT_GLBOPT2],
+    ["MMAT_GLBOPT3", ida_hexrays.MMAT_GLBOPT3],
+    ["MMAT_LVARS", ida_hexrays.MMAT_LVARS]]
+
     class MaturityForm(ida_kernwin.Form):
         def __init__(self):
-            ctrl = ida_kernwin.Form.DropdownListControl([text for text, _ in LEVELS])
-            form = """Select maturity level
-             <Select maturity level:{ctrl}>"""
-            ida_kernwin.Form.__init__(self, form, {"ctrl": ctrl})
+            form = """%s
+             <Maturity level:{mat_lvl}>
+             <##MBA Flags (currently unsupported)##MBA_SHORT:{flags_short}>{chkgroup_flags}>
+             """ % genmc.wanted_name
+
+            dropdown_ctl = ida_kernwin.Form.DropdownListControl(
+                [text for text, _ in maturity_levels])
+            chk_ctl = ida_kernwin.Form.ChkGroupControl(("flags_short",))
+
+            controls = {"mat_lvl": dropdown_ctl,
+            "chkgroup_flags": chk_ctl}
+
+            ida_kernwin.Form.__init__(self, form, controls)
 
     form = MaturityForm()
     form, args = form.Compile()
@@ -129,7 +146,7 @@ def ask_desired_maturity():
     mmat = None
     text = None
     if ok == 1:
-        text, mmat = LEVELS[form.ctrl.value]
+        text, mmat = maturity_levels[form.mat_lvl.value]
     form.Free()
     return (text, mmat)
 
@@ -138,7 +155,6 @@ def show_microcode():
     """Generates and displays microcode for an address range.
     An address range can be a selection of code or that of
     the current function."""
-    global VIEWERS
 
     sel, sea, eea = ida_kernwin.read_range_selection(None)
     pfn = ida_funcs.get_func(ida_kernwin.get_screen_ea())
@@ -173,7 +189,6 @@ def show_microcode():
         return (False, "Error creating viewer")
 
     mcv.Show()
-    VIEWERS.append(mcv)
     return (True,
         "Successfully generated microcode for 0x%s..0x%s\n" % (addr_fmt % sea, addr_fmt % eea))
 
@@ -213,18 +228,19 @@ class genmc(ida_idaapi.plugin_t):
 
 # -----------------------------------------------------------------------------
 def PLUGIN_ENTRY():
-    """Entry point of this code if run as a plugin."""
+    """Entry point of this code if launched as a plugin."""
     return genmc()
 
 # -----------------------------------------------------------------------------
 def SCRIPT_ENTRY():
-    """Entry point of this code if run as a script."""
-    if "__plugins__" not in __name__:
+    """Entry point of this code if launched as a script."""
+    if not is_plugin():
         ida_kernwin.msg(("%s: Available commands:\n"
             "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
             genmc.wanted_name))
         create_mc_widget()
-    return
+        return True
+    return False
 
 # -----------------------------------------------------------------------------
 SCRIPT_ENTRY()
