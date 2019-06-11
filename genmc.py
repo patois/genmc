@@ -3,6 +3,7 @@
 # Requires IDA and decompiler(s) >= 7.3
 #
 # Based on code/ideas from:
+# - vds13.py from Hexrays SDK
 # - https://github.com/RolfRolles/HexRaysDeob
 # - https://github.com/NeatMonster/MCExplorer
 
@@ -29,26 +30,37 @@ def is_plugin():
     return "__plugins__" in __name__
 
 # -----------------------------------------------------------------------------
+def get_target_dir():
+    """returns destination path for plugin installation."""
+    base = os.path.join(
+        ida_diskio.get_user_idadir(),
+        "plugins")
+    return os.path.join(base, genmc.wanted_name+".py")
+
+# -----------------------------------------------------------------------------
+def is_installed():
+    """checks whether script is present in designated plugins directory."""
+    return os.path.isfile(get_target_dir())
+
+# -----------------------------------------------------------------------------
 SELF = __file__
 def install_plugin():
-    """Installs script to IDA userdir as a plugin"""
+    """Installs script to IDA userdir as a plugin."""
     if is_plugin():
         ida_kernwin.msg("Command not available. Plugin already installed.\n")
         return False
 
     src = SELF
-    base = os.path.join(
-        ida_diskio.get_user_idadir(),
-        "plugins")
-    dst = os.path.join(base, genmc.wanted_name+".py")
-    if os.path.isfile(dst):
+    if is_installed():
         btnid = ida_kernwin.ask_yn(ida_kernwin.ASKBTN_NO, "File exists. Replace?")
         if btnid is not ida_kernwin.ASKBTN_YES:
             return False
-    ida_kernwin.msg("Copying script from \"%s\" to \"%s\"..." % (src, dst))
-    if not os.path.exists(base):
+    dst = get_target_dir()
+    usrdir = os.path.dirname(dst)
+    ida_kernwin.msg("Copying script from \"%s\" to \"%s\"..." % (src, usrdir))
+    if not os.path.exists(usrdir):
         try:
-            os.path.makedirs(base)
+            os.path.makedirs(usrdir)
         except OSError as e:
             if e.errno != errno.EEXIST:
                 ida_kernwin.msg("failed (mkdir)!\n")
@@ -111,8 +123,8 @@ class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
 
 # -----------------------------------------------------------------------------
 def ask_desired_maturity():
-    """Displays a dropdown list control which lets the user
-    choose a maturity level of the microcode to generate."""
+    """Displays a dialog which lets the user choose a maturity level
+    of the microcode to generate."""
 
     maturity_levels = [
     ["MMAT_GENERATED", ida_hexrays.MMAT_GENERATED],
@@ -127,8 +139,8 @@ def ask_desired_maturity():
     class MaturityForm(ida_kernwin.Form):
         def __init__(self):
             form = """%s
-             <Maturity level:{mat_lvl}>
-             <##MBA Flags (currently unsupported)##MBA_SHORT:{flags_short}>{chkgroup_flags}>
+             <Maturity level:{mat_lvl}>\n\n\n
+             <##MBA Flags##MBA_SHORT:{flags_short}>{chkgroup_flags}>
              """ % genmc.wanted_name
 
             dropdown_ctl = ida_kernwin.Form.DropdownListControl(
@@ -145,10 +157,12 @@ def ask_desired_maturity():
     ok = form.Execute()
     mmat = None
     text = None
+    flags = 0
     if ok == 1:
         text, mmat = maturity_levels[form.mat_lvl.value]
+    flags |= 0x00400000 if form.flags_short.checked else 0
     form.Free()
-    return (text, mmat)
+    return (text, mmat, flags)
 
 # -----------------------------------------------------------------------------
 def show_microcode():
@@ -170,9 +184,9 @@ def show_microcode():
     if not ida_bytes.is_code(F):
         return (False, "The selected range must start with an instruction")
 
-    text, mmat = ask_desired_maturity()
+    text, mmat, mba_flags = ask_desired_maturity()
     if text is None and mmat is None:
-        return (False, "Cancelled")
+        return (True, "Cancelled")
 
     hf = ida_hexrays.hexrays_failure_t()
     mbr = ida_hexrays.mba_ranges_t()
@@ -183,6 +197,7 @@ def show_microcode():
         return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.str))
 
     vp = printer_t()
+    mba.set_mba_flags(mba_flags)
     mba._print(vp)
     mcv = microcode_viewer_t()
     if not mcv.Create("0x%s-0x%s (%s)" % (addr_fmt % sea, addr_fmt % eea, text), vp.get_mc()):
@@ -190,7 +205,7 @@ def show_microcode():
 
     mcv.Show()
     return (True,
-        "Successfully generated microcode for 0x%s..0x%s\n" % (addr_fmt % sea, addr_fmt % eea))
+        "Successfully generated microcode for 0x%s..0x%s" % (addr_fmt % sea, addr_fmt % eea))
 
 # -----------------------------------------------------------------------------
 def create_mc_widget():
@@ -235,9 +250,10 @@ def PLUGIN_ENTRY():
 def SCRIPT_ENTRY():
     """Entry point of this code if launched as a script."""
     if not is_plugin():
-        ida_kernwin.msg(("%s: Available commands:\n"
-            "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
-            genmc.wanted_name))
+        if not is_installed():
+            ida_kernwin.msg(("%s: Available commands:\n"
+                "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
+                genmc.wanted_name))
         create_mc_widget()
         return True
     return False
