@@ -10,18 +10,16 @@
 __author__ = "Dennis Elser"
 
 # -----------------------------------------------------------------------------
-import os
+import os, shutil, errno
 
 import ida_idaapi
 import ida_bytes
 import ida_range
-import ida_kernwin
-import ida_hexrays
+import ida_kernwin as kw
+import ida_hexrays as hr
 import ida_funcs
 import ida_diskio
 import ida_ida
-import shutil
-import errno
 
 # -----------------------------------------------------------------------------
 def is_plugin():
@@ -47,37 +45,37 @@ SELF = __file__
 def install_plugin():
     """Installs script to IDA userdir as a plugin."""
     if is_plugin():
-        ida_kernwin.msg("Command not available. Plugin already installed.\n")
+        kw.msg("Command not available. Plugin already installed.\n")
         return False
 
     src = SELF
     if is_installed():
-        btnid = ida_kernwin.ask_yn(ida_kernwin.ASKBTN_NO, "File exists. Replace?")
-        if btnid is not ida_kernwin.ASKBTN_YES:
+        btnid = kw.ask_yn(kw.ASKBTN_NO, "File exists. Replace?")
+        if btnid is not kw.ASKBTN_YES:
             return False
     dst = get_target_dir()
     usrdir = os.path.dirname(dst)
-    ida_kernwin.msg("Copying script from \"%s\" to \"%s\"..." % (src, usrdir))
+    kw.msg("Copying script from \"%s\" to \"%s\" ..." % (src, usrdir))
     if not os.path.exists(usrdir):
         try:
             os.path.makedirs(usrdir)
         except OSError as e:
             if e.errno != errno.EEXIST:
-                ida_kernwin.msg("failed (mkdir)!\n")
+                kw.msg("failed (mkdir)!\n")
                 return False
     try:
         shutil.copy(src, dst)
     except:
-        ida_kernwin.msg("failed (copy)!\n")
+        kw.msg("failed (copy)!\n")
         return False
-    ida_kernwin.msg("done!\n")
+    kw.msg("done!\n")
     return True
 
 # -----------------------------------------------------------------------------
 def is_ida_version(requested):
     """Checks minimum required IDA version."""
     rv = requested.split(".")
-    kv = ida_kernwin.get_kernel_version().split(".")
+    kv = kw.get_kernel_version().split(".")
 
     count = min(len(rv), len(kv))
     if not count:
@@ -93,13 +91,13 @@ def is_compatible():
     """Checks whether script is compatible with current IDA and
     decompiler versions."""
     min_ida_ver = "7.3"
-    return is_ida_version(min_ida_ver) and ida_hexrays.init_hexrays_plugin()
+    return is_ida_version(min_ida_ver) and hr.init_hexrays_plugin()
 
 # -----------------------------------------------------------------------------
-class printer_t(ida_hexrays.vd_printer_t):
+class printer_t(hr.vd_printer_t):
     """Converts microcode output to an array of strings."""
     def __init__(self, *args):
-        ida_hexrays.vd_printer_t.__init__(self)
+        hr.vd_printer_t.__init__(self)
         self.mc = []
 
     def get_mc(self):
@@ -110,11 +108,11 @@ class printer_t(ida_hexrays.vd_printer_t):
         return 1
 
 # -----------------------------------------------------------------------------
-class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
+class microcode_viewer_t(kw.simplecustviewer_t):
     """Creates a widget that displays Hex-Rays microcode."""
     def Create(self, title, lines = []):
-        title = "View Microcode - %s" % title
-        if not ida_kernwin.simplecustviewer_t.Create(self, title):
+        title = "Microcode: %s" % title
+        if not kw.simplecustviewer_t.Create(self, title):
             return False
 
         for line in lines:
@@ -125,32 +123,31 @@ class microcode_viewer_t(ida_kernwin.simplecustviewer_t):
 def ask_desired_maturity():
     """Displays a dialog which lets the user choose a maturity level
     of the microcode to generate."""
-
     maturity_levels = [
-    ["MMAT_GENERATED", ida_hexrays.MMAT_GENERATED],
-    ["MMAT_PREOPTIMIZED", ida_hexrays.MMAT_PREOPTIMIZED],
-    ["MMAT_LOCOPT", ida_hexrays.MMAT_LOCOPT],
-    ["MMAT_CALLS", ida_hexrays.MMAT_CALLS],
-    ["MMAT_GLBOPT1", ida_hexrays.MMAT_GLBOPT1],
-    ["MMAT_GLBOPT2", ida_hexrays.MMAT_GLBOPT2],
-    ["MMAT_GLBOPT3", ida_hexrays.MMAT_GLBOPT3],
-    ["MMAT_LVARS", ida_hexrays.MMAT_LVARS]]
+    ["MMAT_GENERATED", hr.MMAT_GENERATED],
+    ["MMAT_PREOPTIMIZED", hr.MMAT_PREOPTIMIZED],
+    ["MMAT_LOCOPT", hr.MMAT_LOCOPT],
+    ["MMAT_CALLS", hr.MMAT_CALLS],
+    ["MMAT_GLBOPT1", hr.MMAT_GLBOPT1],
+    ["MMAT_GLBOPT2", hr.MMAT_GLBOPT2],
+    ["MMAT_GLBOPT3", hr.MMAT_GLBOPT3],
+    ["MMAT_LVARS", hr.MMAT_LVARS]]
 
-    class MaturityForm(ida_kernwin.Form):
+    class MaturityForm(kw.Form):
         def __init__(self):
             form = """%s
              <Maturity level:{mat_lvl}>\n\n\n
              <##MBA Flags##MBA_SHORT:{flags_short}>{chkgroup_flags}>
              """ % genmc.wanted_name
 
-            dropdown_ctl = ida_kernwin.Form.DropdownListControl(
+            dropdown_ctl = kw.Form.DropdownListControl(
                 [text for text, _ in maturity_levels])
-            chk_ctl = ida_kernwin.Form.ChkGroupControl(("flags_short",))
+            chk_ctl = kw.Form.ChkGroupControl(("flags_short",))
 
             controls = {"mat_lvl": dropdown_ctl,
             "chkgroup_flags": chk_ctl}
 
-            ida_kernwin.Form.__init__(self, form, controls)
+            kw.Form.__init__(self, form, controls)
 
     form = MaturityForm()
     form, args = form.Compile()
@@ -160,7 +157,7 @@ def ask_desired_maturity():
     flags = 0
     if ok == 1:
         text, mmat = maturity_levels[form.mat_lvl.value]
-    flags |= 0x00400000 if form.flags_short.checked else 0
+    flags |= hr.MBA_SHORT if form.flags_short.checked else 0
     form.Free()
     return (text, mmat, flags)
 
@@ -169,9 +166,8 @@ def show_microcode():
     """Generates and displays microcode for an address range.
     An address range can be a selection of code or that of
     the current function."""
-
-    sel, sea, eea = ida_kernwin.read_range_selection(None)
-    pfn = ida_funcs.get_func(ida_kernwin.get_screen_ea())
+    sel, sea, eea = kw.read_range_selection(None)
+    pfn = ida_funcs.get_func(kw.get_screen_ea())
     if not sel and not pfn:
         return (False, "Position cursor within a function or select range")
 
@@ -188,11 +184,11 @@ def show_microcode():
     if text is None and mmat is None:
         return (True, "Cancelled")
 
-    hf = ida_hexrays.hexrays_failure_t()
-    mbr = ida_hexrays.mba_ranges_t()
+    hf = hr.hexrays_failure_t()
+    mbr = hr.mba_ranges_t()
     mbr.ranges.push_back(ida_range.range_t(sea, eea))
-    ml = ida_hexrays.mlist_t()
-    mba = ida_hexrays.gen_microcode(mbr, hf, ml, ida_hexrays.DECOMP_WARNINGS, mmat)
+    ml = hr.mlist_t()
+    mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, mmat)
     if not mba:
         return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.str))
 
@@ -214,10 +210,10 @@ def create_mc_widget():
     This function acts as the main entry point that is invoked if the
     code is run as a script or as a plugin."""
     if not is_compatible():
-        ida_kernwin.msg("%s: Unsupported IDA / Hex-rays version\n" % (genmc.wanted_name))
+        kw.msg("%s: Unsupported IDA / Hex-rays version\n" % (genmc.wanted_name))
         return False
     success, message = show_microcode()
-    output = ida_kernwin.msg if success else ida_kernwin.warning
+    output = kw.msg if success else kw.warning
     output("%s: %s\n" % (genmc.wanted_name, message))
     return success
 
@@ -251,7 +247,7 @@ def SCRIPT_ENTRY():
     """Entry point of this code if launched as a script."""
     if not is_plugin():
         if not is_installed():
-            ida_kernwin.msg(("%s: Available commands:\n"
+            kw.msg(("%s: Available commands:\n"
                 "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
                 genmc.wanted_name))
         create_mc_widget()
