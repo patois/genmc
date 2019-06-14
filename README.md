@@ -1,7 +1,7 @@
 # genmc - Display Hex-Rays Microcode
 
 genmc is an IDAPython script/plugin hybrid that displays Hexrays decompiler
-microcode, which an help in developing microcode plugins.
+microcode, which can help in developing microcode plugins.
 
 By running the code as a script within IDA, a Python shell command becomes
 available which, after typing "install_plugin()", copies the script to
@@ -16,3 +16,5 @@ Based on code/ideas from:
 - vds13.py from Hexrays SDK
 - https://github.com/RolfRolles/HexRaysDeob
 - https://github.com/NeatMonster/MCExplorer
+
+![genmc animated gif](/rsrc/genmc.gif?raw=true)
