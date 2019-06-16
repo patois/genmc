@@ -21,6 +21,8 @@ import ida_funcs
 import ida_diskio
 import ida_ida
 
+PLUGIN_NAME = "genmc"
+
 # -----------------------------------------------------------------------------
 def is_plugin():
     """returns True if this script is executed from within an IDA plugins
@@ -33,7 +35,7 @@ def get_target_dir():
     base = os.path.join(
         ida_diskio.get_user_idadir(),
         "plugins")
-    return os.path.join(base, genmc.wanted_name+".py")
+    return os.path.join(base, PLUGIN_NAME+".py")
 
 # -----------------------------------------------------------------------------
 def is_installed():
@@ -68,7 +70,7 @@ def install_plugin():
     except:
         kw.msg("failed (copy)!\n")
         return False
-    kw.msg("done!\n")
+    kw.msg("done!\nPlease restart this IDA instance now.\n")
     return True
 
 # -----------------------------------------------------------------------------
@@ -135,10 +137,13 @@ def ask_desired_maturity():
 
     class MaturityForm(kw.Form):
         def __init__(self):
-            form = """%s
-             <Maturity level:{mat_lvl}>\n\n\n
-             <##MBA Flags##MBA_SHORT:{flags_short}>{chkgroup_flags}>
-             """ % genmc.wanted_name
+            self.title = "Display Microcode"
+            form = ("STARTITEM {id:mat_lvl}\n"
+                "%s\n"
+                " \n"
+                "<Maturity level:{mat_lvl}>\n\n"
+                "<##Options##Output includes comments:{flags_short}>{chkgroup_flags}>\n\n" %
+                self.title)
 
             dropdown_ctl = kw.Form.DropdownListControl(
                 [text for text, _ in maturity_levels])
@@ -151,13 +156,15 @@ def ask_desired_maturity():
 
     form = MaturityForm()
     form, args = form.Compile()
+    form.flags_short.checked = True
     ok = form.Execute()
+
     mmat = None
     text = None
     flags = 0
     if ok == 1:
         text, mmat = maturity_levels[form.mat_lvl.value]
-    flags |= hr.MBA_SHORT if form.flags_short.checked else 0
+    flags |= 0 if form.flags_short.checked else hr.MBA_SHORT
     form.Free()
     return (text, mmat, flags)
 
@@ -210,11 +217,11 @@ def create_mc_widget():
     This function acts as the main entry point that is invoked if the
     code is run as a script or as a plugin."""
     if not is_compatible():
-        kw.msg("%s: Unsupported IDA / Hex-rays version\n" % (genmc.wanted_name))
+        kw.msg("%s: Unsupported IDA / Hex-rays version\n" % (PLUGIN_NAME))
         return False
     success, message = show_microcode()
     output = kw.msg if success else kw.warning
-    output("%s: %s\n" % (genmc.wanted_name, message))
+    output("%s: %s\n" % (PLUGIN_NAME, message))
     return success
 
 # -----------------------------------------------------------------------------
@@ -224,8 +231,8 @@ class genmc(ida_idaapi.plugin_t):
     flags = 0
     comment = "Display microcode"
     help = comment
-    wanted_name = 'genmc'
-    wanted_hotkey = 'Ctrl-Shift-M'
+    wanted_name = PLUGIN_NAME
+    wanted_hotkey = "Ctrl-Shift-M"
 
     def init(self):
         return (ida_idaapi.PLUGIN_OK if
@@ -249,7 +256,7 @@ def SCRIPT_ENTRY():
         if not is_installed():
             kw.msg(("%s: Available commands:\n"
                 "[+] \"install_plugin()\" - install script to ida_userdir/plugins\n") % (
-                genmc.wanted_name))
+                PLUGIN_NAME))
         create_mc_widget()
         return True
     return False
