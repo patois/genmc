@@ -22,6 +22,7 @@ import ida_diskio
 import ida_ida
 import ida_graph
 import ida_lines
+import ida_moves
 
 PLUGIN_NAME = "genmc"
 
@@ -50,7 +51,7 @@ def is_plugin():
     return "__plugins__" in __name__
 
 # -----------------------------------------------------------------------------
-def get_target_dir():
+def get_target_filename():
     """returns destination path for plugin installation."""
     base = os.path.join(
         ida_diskio.get_user_idadir(),
@@ -60,7 +61,7 @@ def get_target_dir():
 # -----------------------------------------------------------------------------
 def is_installed():
     """checks whether script is present in designated plugins directory."""
-    return os.path.isfile(get_target_dir())
+    return os.path.isfile(get_target_filename())
 
 # -----------------------------------------------------------------------------
 SELF = __file__
@@ -72,10 +73,11 @@ def install_plugin():
 
     src = SELF
     if is_installed():
-        btnid = kw.ask_yn(kw.ASKBTN_NO, "File exists. Replace?")
+        btnid = kw.ask_yn(kw.ASKBTN_NO,
+            "File exists:\n\n%s\n\nReplace?" % get_target_filename())
         if btnid is not kw.ASKBTN_YES:
             return False
-    dst = get_target_dir()
+    dst = get_target_filename()
     usrdir = os.path.dirname(dst)
     kw.msg("Copying script from \"%s\" to \"%s\" ..." % (src, usrdir))
     if not os.path.exists(usrdir):
@@ -90,7 +92,8 @@ def install_plugin():
     except:
         kw.msg("failed (copy)!\n")
         return False
-    kw.msg("done!\nPlease restart this IDA instance now.\n")
+    kw.msg(("done\n"
+        "Plugin installed - please restart this IDA instance now.\n"))
     return True
 
 # -----------------------------------------------------------------------------
@@ -154,7 +157,8 @@ class microcode_insnviewer_t(ida_graph.GraphViewer):
 
         if mop.t == hr.mop_d: # result of another instruction
             dst_id = self._insert_minsn(mop.d)
-            self.AddEdge(node_id, dst_id)
+            if dst_id:
+                self.AddEdge(node_id, dst_id)
         elif mop.t == hr.mop_f: # list of arguments
             for arg in mop.f.args:
                 self._insert_mop(arg, node_id)
@@ -166,13 +170,15 @@ class microcode_insnviewer_t(ida_graph.GraphViewer):
         return node_id
 
     def _insert_minsn(self, minsn):
-        text = get_mcode_name(minsn.opcode) + '\n' + minsn._print()
-        node_id = self.AddNode(text)
-        
-        self._insert_mop(minsn.l, node_id)
-        self._insert_mop(minsn.r, node_id)
-        self._insert_mop(minsn.d, node_id)
-        return node_id
+        if minsn:
+            text = get_mcode_name(minsn.opcode) + '\n' + minsn._print()
+            node_id = self.AddNode(text)
+            
+            self._insert_mop(minsn.l, node_id)
+            self._insert_mop(minsn.r, node_id)
+            self._insert_mop(minsn.d, node_id)
+            return node_id
+        return None
 
     def OnRefresh(self):
         self.Clear()
@@ -224,18 +230,64 @@ class microcode_viewer_t(kw.simplecustviewer_t):
             self.AddLine(line)
         return True
 
-    def OnKeydown(self, vkey, shift):
-        if shift == 0 and vkey == ord("G"):
-            microcode_graphviewer_t(self._mba, self.title).Show()
+    def _fit_graph(self, graph):
+        if graph:
+            gv = graph.GetWidget()
+            ida_graph.viewer_fit_window(gv)
+            ida_graph.refresh_viewer(gv)
             return True
-        elif shift == 0 and vkey == ord("I"):
+        return False
+
+    def _dock_widgets(self, graph, dockpos=kw.DP_RIGHT):
+        if graph:
+            gv = graph.GetWidget()
+            kw.set_dock_pos(kw.get_widget_title(gv), self.title, dockpos)
+
+            gli = ida_moves.graph_location_info_t()
+            if ida_graph.viewer_get_gli(gli, gv):
+                gli.zoom = 0 # auto-position
+                ida_graph.viewer_set_gli(gv, gli, ida_graph.GLICTL_CENTER)
+                ida_graph.refresh_viewer(gv)
+            return True
+        return False
+
+    """TODO: it's better to handle keyboard input by
+    registering an "action" and assigning it a hotkey"""
+    def OnKeydown(self, vkey, shift):
+        if vkey == ord("G"):
+            g = microcode_graphviewer_t(self._mba, self.title)
+            if g:
+                g.Show()
+                self._fit_graph(g)
+                if shift == 0:
+                    self._dock_widgets(g)
+            return True
+        elif vkey == ord("I"):
+            """TODO: at some point, the textual representation of the mba
+                 should manually be created.
+              -> we would no longer have to parse the textual output
+                 that is created by the gen_microcode() function
+              .> we may insert COLOR_ADDR tags which would allow us to
+                 contextually link different viewers"""
             widget = self.GetWidget()
             line = kw.get_custom_viewer_curline(widget, False)
             line = ida_lines.tag_remove(line)
-            if '.' in line:
+            p = line.find(" ")
+            if p != -1 and '.' in line[:p]:
                 block, serial = line.split('.')[:2]
                 serial = serial.strip().split(' ')[0]
-                microcode_insnviewer_t(self._mba, self.mmat_name, self.fn_name, int(block), int(serial)).Show()
+                g = microcode_insnviewer_t(self._mba, self.mmat_name, self.fn_name, int(block), int(serial))
+                if g:
+                    g.Show()
+                    self._fit_graph(g)
+                    if shift == 0:
+                        self._dock_widgets(g, kw.DP_FLOATING)
+            else:
+                message = ("There is something wrong with the output generated by gen_microcode()!\n"
+                    "Please rerun '%s.py'!" % PLUGIN_NAME)
+                if line.startswith(";") or not(len(line)):
+                    message = "Please position the cursor on a microcode instruction."
+                kw.warning(message)
             return True
         return False
 
@@ -295,13 +347,14 @@ def show_microcode():
     pfn = ida_funcs.get_func(kw.get_screen_ea())
     if not sel and not pfn:
         return (False, "Position cursor within a function or select range")
-    fn_name = ida_funcs.get_func_name(pfn.start_ea)
-
+    
     if not sel and pfn:
         sea = pfn.start_ea
         eea = pfn.end_ea
 
     addr_fmt = "%016x" if ida_ida.inf_is_64bit() else "%08x"
+    fn_name = (ida_funcs.get_func_name(pfn.start_ea) 
+        if pfn else "0x%s-0x%s" % (addr_fmt % sea, addr_fmt % eea))
     F = ida_bytes.get_flags(sea)
     if not ida_bytes.is_code(F):
         return (False, "The selected range must start with an instruction")
@@ -317,7 +370,6 @@ def show_microcode():
     mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, mmat)
     if not mba:
         return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.str))
-
     vp = printer_t()
     mba.set_mba_flags(mba_flags)
     mba._print(vp)

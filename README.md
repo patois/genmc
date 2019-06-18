@@ -10,6 +10,10 @@ $HOME/.idapro/plugins or %APPDATA%Hex-Rays/IDA Pro/plugins.
 With the script installed into the plugins folder, it can be invoked from
 the plugins menu or by using the hotkey 'Ctrl-Shift-M'.
 
+Microcode viewer keyboard shortcuts:
+- 'g': display microcode graph
+- 'i': display graph for current microinstruction
+
 IDA and decompilers >= 7.3 are required.
 
 Based on code/ideas from:
