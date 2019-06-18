@@ -20,8 +20,28 @@ import ida_hexrays as hr
 import ida_funcs
 import ida_diskio
 import ida_ida
+import ida_graph
+import ida_lines
 
 PLUGIN_NAME = "genmc"
+
+# -----------------------------------------------------------------------------
+def get_mcode_name(mcode):
+    """returns the name of the mcode_t passed in parameter."""
+    for x in dir(hr):
+        if x.startswith('m_'):
+            if mcode == getattr(hr, x):
+                return x
+    return None
+
+# -----------------------------------------------------------------------------
+def get_mopt_name(mopt):
+    """returns the name of the mopt_t passed in parameter."""
+    for x in dir(hr):
+        if x.startswith('mop_'):
+            if mopt == getattr(hr, x):
+                return x
+    return None
 
 # -----------------------------------------------------------------------------
 def is_plugin():
@@ -110,16 +130,114 @@ class printer_t(hr.vd_printer_t):
         return 1
 
 # -----------------------------------------------------------------------------
+class microcode_insnviewer_t(ida_graph.GraphViewer):
+    """Displays the graph view of Hex-Rays microcode."""
+    def __init__(self, mba, mmat_name, fn_name, block, serial):
+        title = "Microinstruction: %s - %d.%d (%s)" % (fn_name, block, serial, mmat_name)
+        ida_graph.GraphViewer.__init__(self, title, True)
+        self.mblock = mba.get_mblock(block)
+        self.minsn = self.get_minsn(serial)
+    
+    def get_minsn(self, serial):
+        curr = self.mblock.head
+        for i in range(serial):
+            curr = curr.next
+        return curr
+
+    def _insert_mop(self, mop, parent):
+        if mop.t == 0:
+            return -1
+
+        text = get_mopt_name(mop.t) + '\n' + mop._print()
+        node_id = self.AddNode(text)
+        self.AddEdge(parent, node_id)
+
+        if mop.t == hr.mop_d: # result of another instruction
+            dst_id = self._insert_minsn(mop.d)
+            self.AddEdge(node_id, dst_id)
+        elif mop.t == hr.mop_f: # list of arguments
+            for arg in mop.f.args:
+                self._insert_mop(arg, node_id)
+        elif mop.t == hr.mop_a: # mop_addr_t: address of operand
+            self._insert_mop(mop.a, node_id)
+        elif mop.t == hr.mop_p: # operand pair
+            self._insert_mop(mop.pair.lop, node_id)
+            self._insert_mop(mop.pair.hop, node_id)
+        return node_id
+
+    def _insert_minsn(self, minsn):
+        text = get_mcode_name(minsn.opcode) + '\n' + minsn._print()
+        node_id = self.AddNode(text)
+        
+        self._insert_mop(minsn.l, node_id)
+        self._insert_mop(minsn.r, node_id)
+        self._insert_mop(minsn.d, node_id)
+        return node_id
+
+    def OnRefresh(self):
+        self.Clear()
+        self._insert_minsn(self.minsn)
+        return True
+
+    def OnGetText(self, node_id):
+        return self._nodes[node_id]
+
+# -----------------------------------------------------------------------------
+class microcode_graphviewer_t(ida_graph.GraphViewer):
+    """Displays the graph view of Hex-Rays microcode."""
+    def __init__(self, mba, title):
+        title = "Microcode graph: %s" % title
+        ida_graph.GraphViewer.__init__(self, title, True)
+        self._mba = mba
+        self._mba.set_mba_flags(hr.MBA_SHORT)
+        if mba.maturity == hr.MMAT_GENERATED or mba.maturity == hr.MMAT_PREOPTIMIZED:
+            mba.build_graph()
+
+    def OnRefresh(self):
+        self.Clear()
+        qty = self._mba.qty
+        for src in range(qty):
+            self.AddNode(src)
+        for src in range(qty):
+            mblock = self._mba.get_mblock(src)
+            for dest in mblock.succset:
+                self.AddEdge(src, dest)
+        return True
+
+    def OnGetText(self, node):
+        mblock = self._mba.get_mblock(node)
+        vp = hr.qstring_printer_t(None, True)
+        mblock._print(vp)
+        return vp.s
+
+# -----------------------------------------------------------------------------
 class microcode_viewer_t(kw.simplecustviewer_t):
     """Creates a widget that displays Hex-Rays microcode."""
-    def Create(self, title, lines = []):
-        title = "Microcode: %s" % title
-        if not kw.simplecustviewer_t.Create(self, title):
+    def Create(self, mba, title, mmat_name, fn_name, lines = []):
+        self.title = "Microcode: %s" % title
+        self._mba = mba
+        self.mmat_name = mmat_name
+        self.fn_name = fn_name
+        if not kw.simplecustviewer_t.Create(self, self.title):
             return False
-
         for line in lines:
             self.AddLine(line)
         return True
+
+    def OnKeydown(self, vkey, shift):
+        if shift == 0 and vkey == ord("G"):
+            microcode_graphviewer_t(self._mba, self.title).Show()
+            return True
+        elif shift == 0 and vkey == ord("I"):
+            widget = self.GetWidget()
+            line = kw.get_custom_viewer_curline(widget, False)
+            line = ida_lines.tag_remove(line)
+            if '.' in line:
+                block, serial = line.split('.')[:2]
+                serial = serial.strip().split(' ')[0]
+                microcode_insnviewer_t(self._mba, self.mmat_name, self.fn_name, int(block), int(serial)).Show()
+            return True
+        return False
 
 # -----------------------------------------------------------------------------
 def ask_desired_maturity():
@@ -177,6 +295,7 @@ def show_microcode():
     pfn = ida_funcs.get_func(kw.get_screen_ea())
     if not sel and not pfn:
         return (False, "Position cursor within a function or select range")
+    fn_name = ida_funcs.get_func_name(pfn.start_ea)
 
     if not sel and pfn:
         sea = pfn.start_ea
@@ -203,7 +322,7 @@ def show_microcode():
     mba.set_mba_flags(mba_flags)
     mba._print(vp)
     mcv = microcode_viewer_t()
-    if not mcv.Create("0x%s-0x%s (%s)" % (addr_fmt % sea, addr_fmt % eea, text), vp.get_mc()):
+    if not mcv.Create(mba, "0x%s-0x%s (%s)" % (addr_fmt % sea, addr_fmt % eea, text), text, fn_name, vp.get_mc()):
         return (False, "Error creating viewer")
 
     mcv.Show()
