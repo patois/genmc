@@ -13,6 +13,7 @@ the plugins menu or by using the hotkey 'Ctrl-Shift-M'.
 Microcode viewer keyboard shortcuts:
 - 'g': display microcode graph
 - 'i': display graph for current microinstruction
+- 'Shift': holding this key will create floating graphs
 
 IDA and decompilers >= 7.3 are required.
 
