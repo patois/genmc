@@ -53,10 +53,10 @@ def is_plugin():
 # -----------------------------------------------------------------------------
 def get_target_filename():
     """returns destination path for plugin installation."""
-    base = os.path.join(
+    return os.path.join(
         ida_diskio.get_user_idadir(),
-        "plugins")
-    return os.path.join(base, PLUGIN_NAME+".py")
+        "plugins",
+        "%s%s" % (PLUGIN_NAME, ".py"))
 
 # -----------------------------------------------------------------------------
 def is_installed():
