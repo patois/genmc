@@ -196,7 +196,6 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
         ida_graph.GraphViewer.__init__(self, title, True)
         self._mba = mba
         self._mba.set_mba_flags(hr.MBA_SHORT)
-        #self._blockcmts = [line for line in lines if "BLOCK " in line] # match the BLOCK XXX PROP line
         self._process_lines(lines)
         if mba.maturity == hr.MMAT_GENERATED or mba.maturity == hr.MMAT_PREOPTIMIZED:
             mba.build_graph()
@@ -254,7 +253,6 @@ class microcode_viewer_t(kw.simplecustviewer_t):
         self.lines = lines
         for line in lines:
             self.AddLine(line)
-        
         return True
 
     def _fit_graph(self, graph):
