@@ -214,7 +214,8 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
                     self._blockcmts[curblk] = [line]
                 else:
                     self._blockcmts[curblk].append(line)
-        self._blockcmts["0"] = self._blockcmts["-1"] + self._blockcmts["0"]
+        if self._blockcmts.has_key("0"):
+            self._blockcmts["0"] = self._blockcmts["-1"] + self._blockcmts["0"]
         del self._blockcmts["-1"]
 
     def OnRefresh(self):
