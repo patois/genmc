@@ -10,7 +10,7 @@
 __author__ = "Dennis Elser"
 
 # -----------------------------------------------------------------------------
-import os, shutil, errno
+import os, shutil, errno, re
 
 import ida_idaapi
 import ida_bytes
@@ -191,13 +191,32 @@ class microcode_insnviewer_t(ida_graph.GraphViewer):
 # -----------------------------------------------------------------------------
 class microcode_graphviewer_t(ida_graph.GraphViewer):
     """Displays the graph view of Hex-Rays microcode."""
-    def __init__(self, mba, title):
+    def __init__(self, mba, title, lines):
         title = "Microcode graph: %s" % title
         ida_graph.GraphViewer.__init__(self, title, True)
         self._mba = mba
         self._mba.set_mba_flags(hr.MBA_SHORT)
+        self._process_lines(lines)
         if mba.maturity == hr.MMAT_GENERATED or mba.maturity == hr.MMAT_PREOPTIMIZED:
             mba.build_graph()
+    
+    def _process_lines(self, lines):
+        self._blockcmts = {}
+        curblk = "-1"
+        self._blockcmts[curblk] = []
+        for i, line in enumerate(lines):
+            plain_line = ida_lines.tag_remove(line).lstrip()
+            if plain_line.startswith(';'):
+                #print plain_line
+                re_ret = re.findall("BLOCK ([0-9]+) ", plain_line)
+                if len(re_ret) > 0:
+                    curblk = re_ret[0]
+                    self._blockcmts[curblk] = [line]
+                else:
+                    self._blockcmts[curblk].append(line)
+        if self._blockcmts.has_key("0"):
+            self._blockcmts["0"] = self._blockcmts["-1"] + self._blockcmts["0"]
+        del self._blockcmts["-1"]
 
     def OnRefresh(self):
         self.Clear()
@@ -214,7 +233,12 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
         mblock = self._mba.get_mblock(node)
         vp = hr.qstring_printer_t(None, True)
         mblock._print(vp)
-        return vp.s
+        
+        node_key = "%d" % node
+        if self._blockcmts.has_key(node_key):
+            return ''.join(self._blockcmts[node_key]) + vp.s
+        else:
+            return vp.s
 
 # -----------------------------------------------------------------------------
 class microcode_viewer_t(kw.simplecustviewer_t):
@@ -226,6 +250,7 @@ class microcode_viewer_t(kw.simplecustviewer_t):
         self.fn_name = fn_name
         if not kw.simplecustviewer_t.Create(self, self.title):
             return False
+        self.lines = lines
         for line in lines:
             self.AddLine(line)
         return True
@@ -255,7 +280,7 @@ class microcode_viewer_t(kw.simplecustviewer_t):
     registering an "action" and assigning it a hotkey"""
     def OnKeydown(self, vkey, shift):
         if vkey == ord("G"):
-            g = microcode_graphviewer_t(self._mba, self.title)
+            g = microcode_graphviewer_t(self._mba, self.title, self.lines)
             if g:
                 g.Show()
                 self._fit_graph(g)
