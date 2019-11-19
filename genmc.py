@@ -207,7 +207,7 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
         for i, line in enumerate(lines):
             plain_line = ida_lines.tag_remove(line).lstrip()
             if plain_line.startswith(';'):
-                #print plain_line
+                # msg("%s" % plain_line)
                 re_ret = re.findall("BLOCK ([0-9]+) ", plain_line)
                 if len(re_ret) > 0:
                     curblk = re_ret[0]
