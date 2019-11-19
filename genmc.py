@@ -106,7 +106,7 @@ def is_ida_version(requested):
     if not count:
         return False
 
-    for i in xrange(count):
+    for i in range(count):
         if int(kv[i]) < int(rv[i]):
             return False
     return True
