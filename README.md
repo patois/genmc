@@ -15,6 +15,8 @@ the plugins menu or by using the hotkey 'Ctrl-Shift-M'.
 
 IDA and decompilers >= 7.3 are required.
 
+This IDAPython project is compatible with Python3. For compatibility with older versions of IDA, you may want to check out the Python2 branch of this project.
+
 ## Keyboard shortcuts/modifiers:
 With the microcode viewer focussed:
 
