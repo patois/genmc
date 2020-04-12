@@ -214,7 +214,7 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
                     self._blockcmts[curblk] = [line]
                 else:
                     self._blockcmts[curblk].append(line)
-        if self._blockcmts.has_key("0"):
+        if "0" in self._blockcmts:
             self._blockcmts["0"] = self._blockcmts["-1"] + self._blockcmts["0"]
         del self._blockcmts["-1"]
 
@@ -235,7 +235,7 @@ class microcode_graphviewer_t(ida_graph.GraphViewer):
         mblock._print(vp)
         
         node_key = "%d" % node
-        if self._blockcmts.has_key(node_key):
+        if node_key in self._blockcmts:
             return ''.join(self._blockcmts[node_key]) + vp.s
         else:
             return vp.s
