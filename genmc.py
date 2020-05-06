@@ -372,13 +372,13 @@ def show_microcode():
     pfn = ida_funcs.get_func(kw.get_screen_ea())
     if not sel and not pfn:
         return (False, "Position cursor within a function or select range")
-    
+
     if not sel and pfn:
         sea = pfn.start_ea
         eea = pfn.end_ea
 
     addr_fmt = "%016x" if ida_ida.inf_is_64bit() else "%08x"
-    fn_name = (ida_funcs.get_func_name(pfn.start_ea) 
+    fn_name = (ida_funcs.get_func_name(pfn.start_ea)
         if pfn else "0x%s-0x%s" % (addr_fmt % sea, addr_fmt % eea))
     F = ida_bytes.get_flags(sea)
     if not ida_bytes.is_code(F):
@@ -387,14 +387,18 @@ def show_microcode():
     text, mmat, mba_flags = ask_desired_maturity()
     if text is None and mmat is None:
         return (True, "Cancelled")
+    
+    if not sel and pfn:
+        mbr = hr.mba_ranges_t(pfn)
+    else:
+        mbr = hr.mba_ranges_t()
+        mbr.ranges.push_back(ida_range.range_t(sea, eea))
 
     hf = hr.hexrays_failure_t()
-    mbr = hr.mba_ranges_t()
-    mbr.ranges.push_back(ida_range.range_t(sea, eea))
     ml = hr.mlist_t()
     mba = hr.gen_microcode(mbr, hf, ml, hr.DECOMP_WARNINGS, mmat)
     if not mba:
-        return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.str))
+        return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.desc()))
     vp = printer_t()
     mba.set_mba_flags(mba_flags)
     mba._print(vp)
