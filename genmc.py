@@ -83,7 +83,7 @@ def install_plugin():
     kw.msg("Copying script from \"%s\" to \"%s\" ..." % (src, usrdir))
     if not os.path.exists(usrdir):
         try:
-            os.path.makedirs(usrdir)
+            os.makedirs(usrdir)
         except OSError as e:
             if e.errno != errno.EEXIST:
                 kw.msg("failed (mkdir)!\n")
