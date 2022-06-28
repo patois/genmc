@@ -23,6 +23,7 @@ import ida_ida
 import ida_graph
 import ida_lines
 import ida_moves
+from ida_pro import IDA_SDK_VERSION
 
 PLUGIN_NAME = "genmc"
 
@@ -97,25 +98,14 @@ def install_plugin():
     return True
 
 # -----------------------------------------------------------------------------
-def is_ida_version(requested):
-    """Checks minimum required IDA version."""
-    rv = requested.split(".")
-    kv = kw.get_kernel_version().split(".")
-
-    count = min(len(rv), len(kv))
-    if not count:
-        return False
-
-    for i in range(count):
-        if int(kv[i]) < int(rv[i]):
-            return False
-    return True
+def is_ida_version(min_ver_required):
+    return IDA_SDK_VERSION >= min_ver_required
 
 # -----------------------------------------------------------------------------
 def is_compatible():
     """Checks whether script is compatible with current IDA and
     decompiler versions."""
-    min_ida_ver = "7.3"
+    min_ida_ver = 730
     return is_ida_version(min_ida_ver) and hr.init_hexrays_plugin()
 
 # -----------------------------------------------------------------------------
