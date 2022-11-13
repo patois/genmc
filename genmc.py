@@ -138,7 +138,7 @@ class microcode_insnviewer_t(ida_graph.GraphViewer):
         return curr
 
     def _insert_mop(self, mop, parent):
-        if mop.t == 0:
+        if mop.t == hr.mop_z:
             return -1
 
         text = get_mopt_name(mop.t) + '\n' + mop._print()
@@ -370,6 +370,7 @@ def show_microcode():
     addr_fmt = "%016x" if ida_ida.inf_is_64bit() else "%08x"
     fn_name = (ida_funcs.get_func_name(pfn.start_ea)
         if pfn else "0x%s-0x%s" % (addr_fmt % sea, addr_fmt % eea))
+
     F = ida_bytes.get_flags(sea)
     if not ida_bytes.is_code(F):
         return (False, "The selected range must start with an instruction")
@@ -390,10 +391,10 @@ def show_microcode():
     if not mba:
         return (False, "0x%s: %s" % (addr_fmt % hf.errea, hf.desc()))
     vp = printer_t()
-    mba.set_mba_flags(mba_flags)
+    mba.set_mba_flags(mba.get_mba_flags() | mba_flags)
     mba._print(vp)
     mcv = microcode_viewer_t()
-    if not mcv.Create(mba, "0x%s-0x%s (%s)" % (addr_fmt % sea, addr_fmt % eea, text), text, fn_name, vp.get_mc()):
+    if not mcv.Create(mba, "%s (%s)" % (fn_name, text), text, fn_name, vp.get_mc()):
         return (False, "Error creating viewer")
 
     mcv.Show()
